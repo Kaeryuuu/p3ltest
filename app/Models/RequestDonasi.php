@@ -6,9 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 
 class RequestDonasi extends Model
 {
+    public $timestamps = false;
     protected $table = 'requestdonasi';
     protected $primaryKey = 'id_request';
-    protected $fillable = ['tanggal_permintaan', 'status'];
+    public $incrementing = true;
+    protected $fillable = ['id_organisasi', 'deskripsi', 'tanggal_permintaan', 'status'];
 
     protected $casts = [
         'tanggal_permintaan' => 'date',

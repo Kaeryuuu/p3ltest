@@ -8,7 +8,8 @@ class Donasi extends Model
 {
     protected $table = 'donasi';
     protected $primaryKey = 'id_donasi';
-    protected $fillable = ['id_request', 'tanggal_permintaan', 'status'];
+    public $incrementing = true;
+    protected $fillable = ['id_request', 'alasan_permintaan','tanggal_permintaan', 'status'];
 
     protected $casts = [
         'tanggal_permintaan' => 'date',

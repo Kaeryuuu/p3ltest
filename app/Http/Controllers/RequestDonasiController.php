@@ -4,48 +4,99 @@ namespace App\Http\Controllers;
 
 use App\Models\RequestDonasi;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class RequestDonasiController extends Controller
 {
-    public function index()
+    public function __construct()
     {
-        $requestDonasi = RequestDonasi::all();
-        return response()->json($requestDonasi);
+        $this->middleware('auth:organisasi');
+    }
+
+    public function index(Request $request)
+    {
+        $query = RequestDonasi::where('id_organisasi', Auth::guard('organisasi')->user()->id_organisasi);
+
+        if ($request->filled('search')) {
+            $search = $request->input('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('deskripsi', 'like', "%{$search}%")
+                  ->orWhere('status', 'like', "%{$search}%")
+                  ->orWhere('tanggal_permintaan', 'like', "%{$search}%");
+            });
+        }
+
+        $requests = $query->orderBy('tanggal_permintaan', 'desc')->paginate(10);
+
+        return view('dashboards.organisasi-request-donasi', compact('requests'));
+    }
+
+    public function create()
+    {
+        return view('dashboards.organisasi-request-donasi-create');
     }
 
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'tanggal_permintaan' => 'nullable|date',
-            'status' => 'nullable|string|max:20',
+            'deskripsi' => 'required|string|max:255',
+            'status' => 'required|in:Pending,Approved,Rejected',
         ]);
 
-        $requestDonasi = RequestDonasi::create($validated);
-        return response()->json($requestDonasi, 201);
+        try {
+            RequestDonasi::create([
+                'id_organisasi' => Auth::guard('organisasi')->user()->id_organisasi,
+                'deskripsi' => $validated['deskripsi'],
+                'tanggal_permintaan' => now(),
+                'status' => $validated['status'],
+            ]);
+            return redirect()->route('organisasi.request-donasi.index')->with('success', 'Donation request created successfully.');
+        } catch (\Exception $e) {
+            \Log::error('Donation request creation failed: ' . $e->getMessage());
+            return back()->withErrors(['error' => 'Failed to create donation request: ' . $e->getMessage()]);
+        }
     }
 
-    public function show($id)
+    public function edit($id_request)
     {
-        $requestDonasi = RequestDonasi::findOrFail($id);
-        return response()->json($requestDonasi);
+        $requestDonasi = RequestDonasi::where('id_organisasi', Auth::guard('organisasi')->user()->id_organisasi)
+                                      ->findOrFail($id_request);
+        return view('dashboards.organisasi-request-donasi-edit', compact('requestDonasi'));
     }
 
-    public function update(Request $request, $id)
+    public function update(Request $request, $id_request)
     {
-        $requestDonasi = RequestDonasi::findOrFail($id);
+        $requestDonasi = RequestDonasi::where('id_organisasi', Auth::guard('organisasi')->user()->id_organisasi)
+                                      ->findOrFail($id_request);
+
         $validated = $request->validate([
-            'tanggal_permintaan' => 'sometimes|nullable|date',
-            'status' => 'sometimes|nullable|string|max:20',
+            'deskripsi' => 'required|string|max:255',
+            'status' => 'required|in:Pending,Approved,Rejected',
         ]);
 
-        $requestDonasi->update($validated);
-        return response()->json($requestDonasi);
+        try {
+            $requestDonasi->update([
+                'deskripsi' => $validated['deskripsi'],
+                'status' => $validated['status'],
+            ]);
+            return redirect()->route('organisasi.request-donasi.index')->with('success', 'Donation request updated successfully.');
+        } catch (\Exception $e) {
+            \Log::error('Donation request update failed: ' . $e->getMessage());
+            return back()->withErrors(['error' => 'Failed to update donation request: ' . $e->getMessage()]);
+        }
     }
 
-    public function destroy($id)
+    public function destroy($id_request)
     {
-        $requestDonasi = RequestDonasi::findOrFail($id);
-        $requestDonasi->delete();
-        return response()->json(null, 204);
+        $requestDonasi = RequestDonasi::where('id_organisasi', Auth::guard('organisasi')->user()->id_organisasi)
+                                      ->findOrFail($id_request);
+
+        try {
+            $requestDonasi->delete();
+            return redirect()->route('organisasi.request-donasi.index')->with('success', 'Donation request deleted successfully.');
+        } catch (\Exception $e) {
+            \Log::error('Donation request deletion failed: ' . $e->getMessage());
+            return back()->withErrors(['error' => 'Failed to delete donation request: ' . $e->getMessage()]);
+        }
     }
 }

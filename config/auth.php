@@ -5,6 +5,7 @@ return [
         'guard' => 'web',
         'passwords' => 'users',
     ],
+
     'guards' => [
         'web' => [
             'driver' => 'session',
@@ -26,11 +27,8 @@ return [
             'driver' => 'session',
             'provider' => 'pegawai',
         ],
-        'sanctum' => [
-        'driver' => 'sanctum',
-        'provider' => null,
-        ],
     ],
+
     'providers' => [
         'users' => [
             'driver' => 'eloquent',
@@ -53,13 +51,21 @@ return [
             'model' => App\Models\Pegawai::class,
         ],
     ],
+
     'passwords' => [
         'users' => [
             'provider' => 'users',
-            'table' => 'password_resets',
+            'table' => 'password_reset_tokens',
             'expire' => 60,
             'throttle' => 60,
         ],
     ],
-    'password_timeout' => 10800,
+
+    'password_timeout-confirmation' => [
+        'fields' => [
+            'email' => 'Email',
+            'password' => 'Password',
+            'password_confirmation' => 'Konfirmasi Password',
+        ],
+    ],
 ];

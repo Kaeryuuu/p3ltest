@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Organisasi;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 
 class OrganisasiController extends Controller
@@ -14,7 +15,7 @@ class OrganisasiController extends Controller
         return response()->json($organisasi);
     }
 
-    public function store(Request $request)
+    public function registerORG(Request $request)
     {
         $validated = $request->validate([
             'nama' => 'required|string|max:100',
@@ -23,23 +24,26 @@ class OrganisasiController extends Controller
             'password' => 'required|string|min:8|confirmed',
         ]);
 
-        $lastOrganisasi = Organisasi::orderBy('id_organisasi', 'desc')->first();
+        try {
+            $lastOrganisasi = Organisasi::orderBy('id_organisasi', 'desc')->first();
+            $lastNumber = $lastOrganisasi ? (int) str_replace('ORG', '', $lastOrganisasi->id_organisasi) : 0;
+            $newId = 'ORG' . ($lastNumber + 1);
 
-        if ($lastOrganisasi) {
-            $lastNumber = (int) str_replace('ORG', '', $lastOrganisasi->id_organisasi);
-        } else {
-            $lastNumber = 0;
+            $organisasi = Organisasi::create([
+                'id_organisasi' => $newId,
+                'nama' => $validated['nama'],
+                'deskripsi' => $validated['deskripsi'],
+                'email' => $validated['email'],
+                'password' => Hash::make($validated['password']),
+            ]);
+
+            Auth::guard('organisasi')->login($organisasi);
+
+            return redirect()->route('organisasi.dashboard')->with('success', 'Registration successful!');
+        } catch (\Exception $e) {
+            \Log::error('Organisasi registration failed: ' . $e->getMessage());
+            return back()->withErrors(['email' => 'Registration failed: ' . $e->getMessage()]);
         }
-
-        $newId = 'ORG' . ($lastNumber + 1);
-
-        // Persiapkan data
-        $validated['id_organisasi'] = $newId;
-        $validated['password'] = Hash::make($validated['password']);
-
-        Organisasi::create($validated);
-
-        return redirect()->route('login')->with('success', 'Akun berhasil dibuat, silahkan login.');
     }
 
     public function show($id)

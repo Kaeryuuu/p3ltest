@@ -2,51 +2,58 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Notifications\Notifiable;
 
 class Penitip extends Authenticatable
 {
     use Notifiable;
-
-    protected $table = 'penitip';
-
     public $timestamps = false;
+    protected $table = 'penitip';
+    protected $primaryKey = 'id_penitip';
+    public $incrementing = false;
+    protected $keyType = 'string';
 
     protected $fillable = [
         'id_penitip',
+        'no_ktp',
         'nama',
+        'telepon',
         'email',
+        'poin_loyalitas',
         'password',
+        'url_foto',
     ];
 
     protected $hidden = [
         'password',
-        'remember_token',
     ];
 
-//     <?php
+    protected $attributes = [
+        'poin_loyalitas' => 0,
+    ];
 
-// namespace App\Models;
+    public static function boot()
+    {
+        parent::boot();
 
-// use Illuminate\Database\Eloquent\Model;
+        static::creating(function ($model) {
+            if (!empty($model->password)) {
+                $model->password = Hash::make($model->password);
+            }
+        });
 
-// class Penitip extends Model
-// {
-//     protected $table = 'penitip';
-//     protected $primaryKey = 'id_penitip';
-//     public $incrementing = false;
-//     protected $keyType = 'string';
-//     protected $fillable = ['nama', 'telepon', 'email', 'poin_loyalitas', 'password', 'url_foto'];
+        static::updating(function ($model) {
+            if (!empty($model->password) && $model->isDirty('password')) {
+                $model->password = Hash::make($model->password);
+            }
+        });
+    }
 
-//     public function barangTitipan()
-//     {
-//         return $this->hasMany(BarangTitipan::class, 'id_penitip', 'id_penitip');
-//     }
-
-//     public function transaksiPenitipan()
-//     {
-//         return $this->hasMany(TransaksiPenitipan::class, 'id_penitip', 'id_penitip');
-//     }
-// }
+    public function barangTitipan()
+    {
+        return $this->hasMany(BarangTitipan::class, 'id_penitip', 'id_penitip');
+    }
 }

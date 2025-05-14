@@ -3,15 +3,29 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
 
-class Pembeli extends Model
+class Pembeli extends Authenticatable
 {
+    use Notifiable;
     public $timestamps = false;
 
     protected $table = 'pembeli';
-    public $incrementing = false;
+    public $incrementing = true;
     protected $primaryKey = 'id_pembeli';
-    protected $fillable = ['id_pembeli', 'nama', 'telepon', 'email', 'password'];
+    protected $fillable = [
+        'nama', 'telepon', 'email', 'poin_loyalitas', 'password',
+    ];
+
+    protected $hidden = [
+        'password',
+    ];
+
+    public function getAuthPassword()
+    {
+        return $this->password;
+    }
 
     public function alamat()
     {

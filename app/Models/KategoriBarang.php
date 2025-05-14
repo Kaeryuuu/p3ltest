@@ -8,7 +8,12 @@ class KategoriBarang extends Model
 {
     protected $table = 'kategoribarang';
     protected $primaryKey = 'id_kategori';
-    protected $fillable = ['nama'];
+    public $incrementing = true;
+    public $timestamps = false;
+
+    protected $fillable = [
+        'nama',
+    ];
 
     public function barangTitipan()
     {

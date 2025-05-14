@@ -4,15 +4,79 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
+use App\Models\Pembeli;
 use App\Models\Penitip;
+use App\Models\Organisasi;
+use App\Models\Pegawai;
 
 class AuthController extends Controller
 {
-    // Show the login form
     public function showLoginForm()
     {
         return view('auth.login');
+    }
+
+    public function login(Request $request)
+    {
+        $credentials = $request->validate([
+            'email' => ['required', 'email'],
+            'password' => ['required'],
+        ]);
+
+        // Attempt login for each user type
+        if (Auth::guard('pembeli')->attempt($credentials)) {
+            $request->session()->regenerate();
+            return redirect()->route('home');
+        }
+
+        if (Auth::guard('penitip')->attempt($credentials)) {
+            $request->session()->regenerate();
+            return redirect()->route('home');
+        }
+
+        if (Auth::guard('organisasi')->attempt($credentials)) {
+            $request->session()->regenerate();
+            return redirect()->route('home');
+        }
+
+        if (Auth::guard('pegawai')->attempt($credentials)) {
+            $request->session()->regenerate();
+            $pegawai = Auth::guard('pegawai')->user();
+            $jabatan = $pegawai->jabatan->nama;
+
+            switch ($jabatan) {
+                case 'Owner':
+                    return redirect()->route('owner.dashboard');
+                case 'Admin':
+                    return redirect()->route('admin.dashboard');
+                case 'Customer Service':
+                    return redirect()->route('cs.dashboard');
+                case 'Gudang':
+                    return redirect()->route('gudang.dashboard');
+                default:
+                    Auth::guard('pegawai')->logout();
+                    return back()->withErrors(['email' => 'Jabatan tidak dikenali.']);
+            }
+        }
+
+        return back()->withErrors([
+            'email' => 'Email atau password salah.',
+        ])->onlyInput('email');
+    }
+
+    public function logout(Request $request)
+    {
+        $guards = ['pembeli', 'penitip', 'organisasi', 'pegawai'];
+        foreach ($guards as $guard) {
+            if (Auth::guard($guard)->check()) {
+                Auth::guard($guard)->logout();
+            }
+        }
+
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect()->route('login');
     }
 
     public function showRegisterForm()
