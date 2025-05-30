@@ -1,0 +1,57 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\TransaksiPenitipan;
+use Illuminate\Http\Request;
+
+class TransaksiPenitipanController extends Controller
+{
+    public function index()
+    {
+        $transaksi = TransaksiPenitipan::all();
+        return response()->json($transaksi);
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'id_penitip' => 'required|exists:penitip,id_penitip',
+            'kode_barang' => 'required|exists:barangtitipan,kode_barang',
+            'catatan' => 'nullable|string',
+            'tanggal_penitipan' => 'nullable|date',
+            'id_pegawai' => 'required|exists:pegawai,id_pegawai',
+        ]);
+
+        $transaksi = TransaksiPenitipan::create($validated);
+        return response()->json($transaksi, 201);
+    }
+
+    public function show($id)
+    {
+        $transaksi = TransaksiPenitipan::findOrFail($id);
+        return response()->json($transaksi);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $transaksi = TransaksiPenitipan::findOrFail($id);
+        $validated = $request->validate([
+            'id_penitip' => 'sometimes|required|exists:penitip,id_penitip',
+            'kode_barang' => 'sometimes|required|exists:barangtitipan,kode_barang',
+            'catatan' => 'sometimes|nullable|string',
+            'tanggal_penitipan' => 'sometimes|nullable|date',
+            'id_pegawai' => 'sometimes|required|exists:pegawai,id_pegawai',
+        ]);
+
+        $transaksi->update($validated);
+        return response()->json($transaksi);
+    }
+
+    public function destroy($id)
+    {
+        $transaksi = TransaksiPenitipan::findOrFail($id);
+        $transaksi->delete();
+        return response()->json(null, 204);
+    }
+}
