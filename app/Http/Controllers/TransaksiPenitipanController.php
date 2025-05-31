@@ -19,8 +19,11 @@ class TransaksiPenitipanController extends Controller
             'id_penitip' => 'required|exists:penitip,id_penitip',
             'kode_barang' => 'required|exists:barangtitipan,kode_barang',
             'catatan' => 'nullable|string',
+            'tanggal_konfirmasi_ambil' => 'nullable|date',        
+            'tanggal_diambil' => 'nullable|date',
             'tanggal_penitipan' => 'nullable|date',
-            'id_pegawai' => 'required|exists:pegawai,id_pegawai',
+            'id_pegawai' => 'required|exists:pegawai,id_pegawai',   
+
         ]);
 
         $transaksi = TransaksiPenitipan::create($validated);

@@ -3,14 +3,6 @@
 @section('title', 'ReuseMart - Marketplace Barang Bekas')
 
 @section('content')
-<!-- Success Message -->
-    @if (session('success'))
-        <div class="container mx-auto px-4 mt-6">
-            <div class="bg-green-100 text-green-700 p-4 rounded-lg max-w-4xl mx-auto">
-                <p class="text-sm">{{ session('success') }}</p>
-            </div>
-        </div>
-    @endif
     <!-- Hero Section -->
     <div class="bg-gradient-to-r from-orange-500 to-orange-600 text-white py-32 text-center relative overflow-hidden">
         <div class="absolute inset-0 bg-[url('https://images.pexels.com/photos/209250/pexels-photo-209250.jpeg?auto=compress&cs=tinysrgb&w=1920&h=600&fit=crop')] opacity-10 bg-cover bg-center"></div>
