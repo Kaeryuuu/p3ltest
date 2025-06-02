@@ -27,10 +27,34 @@ class AuthController extends Controller
         Log::info('Attempting login', [
             'email' => $credentials['email'],
             'session_id' => $request->session()->getId(),
-            'session_data' => $request->session()->all(),
-            'cookies' => $request->cookies->all(),
-            'headers' => $request->headers->all()
+            // Consider reducing session_data, cookies, and headers in regular logs unless debugging
+            // 'session_data' => $request->session()->all(),
+            // 'cookies' => $request->cookies->all(),
+            // 'headers' => $request->headers->all()
         ]);
+
+        // Attempt to log in as Pembeli first
+        if (Auth::guard('pembeli')->attempt($credentials)) {
+            $pembeli = Auth::guard('pembeli')->user();
+            // Asumsi model Pembeli memiliki field 'status' dan primary key 'id_pembeli'
+            // Sesuaikan jika nama field berbeda
+            if (property_exists($pembeli, 'status') && $pembeli->status === 'inactive') {
+                Auth::guard('pembeli')->logout();
+                Log::warning('Inactive Pembeli account', ['email' => $credentials['email']]);
+                return back()->withErrors(['email' => 'Akun Anda tidak aktif. Silakan hubungi administrator.']);
+            }
+            $request->session()->regenerate();
+            $request->session()->put('guard', 'pembeli');
+            Log::info('Pembeli login successful', [
+                'user_id' => $pembeli->id_pembeli, // Pastikan ini adalah primary key yang benar
+                'session_id' => $request->session()->getId(),
+            ]);
+            // Logout from other guards if any session was active
+            Auth::guard('penitip')->logout();
+            Auth::guard('organisasi')->logout();
+            Auth::guard('pegawai')->logout();
+            return redirect()->route('homepage'); // Arahkan ke homepage atau dashboard pembeli jika ada
+        }
 
         if (Auth::guard('penitip')->attempt($credentials)) {
             $penitip = Auth::guard('penitip')->user();
@@ -44,18 +68,12 @@ class AuthController extends Controller
             Log::info('Penitip login successful', [
                 'user_id' => $penitip->id_penitip,
                 'session_id' => $request->session()->getId(),
-                'session_data' => $request->session()->all(),
-                'cookies' => $request->cookies->all()
-                // 'intended_url' => route('homepage') // Komentari atau hapus intendedUrl jika tidak digunakan
             ]);
-            Auth::guard('pembeli')->logout();
+            Auth::guard('pembeli')->logout(); // Tambahkan logout pembeli jika penitip login
             Auth::guard('organisasi')->logout();
             Auth::guard('pegawai')->logout();
-            // PERUBAHAN DI SINI: Arahkan ke homepage
             return redirect()->route('homepage');
         }
-
-        // Blok if (Auth::guard('penitip')->attempt($credentials)) yang kedua telah dihapus karena duplikat
 
         if (Auth::guard('organisasi')->attempt($credentials)) {
             $organisasi = Auth::guard('organisasi')->user();
@@ -69,13 +87,11 @@ class AuthController extends Controller
             Log::info('Organisasi login successful', [
                 'user_id' => $organisasi->id_organisasi,
                 'session_id' => $request->session()->getId(),
-                'session_data' => $request->session()->all(),
-                'cookies' => $request->cookies->all()
             ]);
             Auth::guard('pembeli')->logout();
             Auth::guard('penitip')->logout();
             Auth::guard('pegawai')->logout();
-            return redirect()->intended(route('organisasi.dashboard')); // Biarkan ini atau ubah ke homepage jika perlu
+            return redirect()->intended(route('organisasi.dashboard'));
         }
 
         if (Auth::guard('pegawai')->attempt($credentials)) {
@@ -89,10 +105,8 @@ class AuthController extends Controller
             $request->session()->put('guard', 'pegawai');
             Log::info('Pegawai login successful', [
                 'user_id' => $pegawai->id_pegawai,
-                'jabatan' => $pegawai->jabatan->nama,
+                'jabatan' => $pegawai->jabatan->nama, // Pastikan relasi jabatan ada dan nama jabatan benar
                 'session_id' => $request->session()->getId(),
-                'session_data' => $request->session()->all(),
-                'cookies' => $request->cookies->all()
             ]);
             Auth::guard('pembeli')->logout();
             Auth::guard('penitip')->logout();
@@ -107,7 +121,7 @@ class AuthController extends Controller
                 case 'Customer Service':
                     return redirect()->intended(route('cs.dashboard'));
                 case 'Gudang':
-                    return redirect()->intended(route('gudang'));
+                    return redirect()->intended(route('gudang.dashboard'));
                 case 'Kurir':
                     return redirect()->intended(route('kurir'));
                 case 'Hunter':
@@ -122,8 +136,6 @@ class AuthController extends Controller
         Log::warning('Login failed', [
             'email' => $credentials['email'],
             'session_id' => $request->session()->getId(),
-            'session_data' => $request->session()->all(),
-            'cookies' => $request->cookies->all()
         ]);
         return back()->with(['error' => 'Email atau password salah.']);
     }
@@ -132,16 +144,19 @@ class AuthController extends Controller
     {
         $guards = ['pembeli', 'penitip', 'organisasi', 'pegawai'];
         $sessionId = $request->session()->getId();
+        $loggedOutGuard = null;
+
         foreach ($guards as $guard) {
             if (Auth::guard($guard)->check()) {
+                $loggedOutGuard = $guard;
                 Log::info('Logging out', [
                     'guard' => $guard,
                     'user_id' => Auth::guard($guard)->id(),
                     'session_id' => $sessionId,
-                    'session_data' => $request->session()->all(),
-                    'cookies' => $request->cookies->all()
                 ]);
                 Auth::guard($guard)->logout();
+                // Hanya logout dari satu guard yang aktif, lalu invalidate session
+                break; 
             }
         }
 
@@ -149,9 +164,9 @@ class AuthController extends Controller
         $request->session()->regenerateToken();
 
         Log::info('Session invalidated after logout', [
-            'session_id' => $sessionId,
+            'logged_out_guard' => $loggedOutGuard,
+            'old_session_id' => $sessionId, // Ganti nama variabel agar lebih jelas
             'new_session_id' => $request->session()->getId(),
-            'session_data' => $request->session()->all()
         ]);
 
         return redirect()->route('login');

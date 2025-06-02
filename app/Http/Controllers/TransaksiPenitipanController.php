@@ -17,12 +17,12 @@ class TransaksiPenitipanController extends Controller
     {
         $validated = $request->validate([
             'id_penitip' => 'required|exists:penitip,id_penitip',
-            'kode_barang' => 'required|exists:barangtitipan,kode_barang',
             'catatan' => 'nullable|string',
             'tanggal_konfirmasi_ambil' => 'nullable|date',        
             'tanggal_diambil' => 'nullable|date',
             'tanggal_penitipan' => 'nullable|date',
-            'id_pegawai' => 'required|exists:pegawai,id_pegawai',   
+            'id_pegawai' => 'required|exists:pegawai,id_pegawai', 
+            'no_nota' => 'nullable|string'  
 
         ]);
 
@@ -41,7 +41,6 @@ class TransaksiPenitipanController extends Controller
         $transaksi = TransaksiPenitipan::findOrFail($id);
         $validated = $request->validate([
             'id_penitip' => 'sometimes|required|exists:penitip,id_penitip',
-            'kode_barang' => 'sometimes|required|exists:barangtitipan,kode_barang',
             'catatan' => 'sometimes|nullable|string',
             'tanggal_penitipan' => 'sometimes|nullable|date',
             'id_pegawai' => 'sometimes|required|exists:pegawai,id_pegawai',

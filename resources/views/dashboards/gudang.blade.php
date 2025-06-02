@@ -10,11 +10,14 @@
                 <h2 class="text-xl font-semibold text-blue-600">ReUseMart - Gudang</h2>
             </div>
             <nav class="mt-6">
-                <a href="{{ route('gudang.dashboard') }}" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-200 {{ request()->routeIs('cs.dashboard') ? 'bg-gray-200' : '' }}">
+                <a href="{{ route('gudang.dashboard') }}" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-200 {{ request()->routeIs('gudang.dashboard') ? 'bg-gray-200' : '' }}">
                     <span class="mr-2">🏠</span> Dashboard
                 </a>
-                <a href="{{ route('gudang.barang-titipan.index') }}" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-200 {{ request()->routeIs('cs.penitip.index') ? 'bg-gray-200' : '' }}">
+                <a href="{{ route('gudang.barang-titipan.index') }}" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-200 {{ request()->routeIs('gudang.barang-titipan.index') ? 'bg-gray-200' : '' }}">
                     <span class="mr-2">👤</span> Manage BarangTitipan
+                </a>
+                <a href="{{ route('gudang.transaksi.index') }}" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-200 {{ request()->routeIs('gudang.transaksi.index') ? 'bg-gray-200' : '' }}">
+                    <span class="mr-2">📦</span> Manage Transaksi
                 </a>
                 <a href="#" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-200">
                     <span class="mr-2">⚙️</span> Settings
@@ -22,6 +25,12 @@
                 <a href="#" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-200">
                     <span class="mr-2">❓</span> Help
                 </a>
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button type="submit" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-200 w-full text-left">
+                        <span class="mr-2">🚪</span> Logout
+                    </button>
+                </form>
             </nav>
         </aside>
 
@@ -38,7 +47,6 @@
             <div class="bg-white p-6 rounded-lg shadow">
                 <h2 class="text-lg font-medium text-gray-700 mb-4">Overview</h2>
                 <p class="text-gray-600">Welcome to the Gudang Dashboard. Use the sidebar to manage Barang Tipan or other tasks.</p>
-                <!-- Add more dashboard content as needed -->
             </div>
         </main>
     </div>

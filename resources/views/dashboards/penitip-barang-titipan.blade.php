@@ -83,7 +83,7 @@
                                     <td class="p-3 text-sm text-gray-700">{{ $barang->nama }}</td>
                                     <td class="p-3 text-sm text-gray-700">Rp {{ number_format($barang->harga, 0, ',', '.') }}</td>
                                     <td class="p-3 text-sm text-gray-700">{{ $barang->berat }} kg</td>
-                                    <td class="p-3 text-sm text-gray-700">{{ ucfirst($barang->status) }}</td>
+                                    <td class="p-3 text-sm text-gray-700">{{ ($barang->status) }}</td>
                                     <td class="p-3 text-sm text-gray-700">{{ $barang->kondisi }}</td>
                                     <td class="p-3 text-sm text-gray-700">
                                         @if($barang->tanggal_kadaluarsa)
@@ -132,7 +132,7 @@
                                                 <button type="button" class="bg-blue-600 text-white px-3 py-1 rounded-lg opacity-50 cursor-not-allowed text-xs @if($actionRenderedForPerpanjangan) ml-1 @endif" disabled>
                                                     Telah Dikonfirmasi
                                                 </button>
-                                            @elseif (in_array($barang->status, ['tersedia', 'didonasikan']))
+                                            @elseif (in_array($barang->status, ['tersedia']))
                                                 <form action="{{ route('penitip.barang-titipan.confirm-pickup', $barang->kode_barang) }}" method="POST" class="inline @if($actionRenderedForPerpanjangan) ml-1 @endif">
                                                     @csrf
                                                     <button type="submit" class="bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 transition duration-200 text-xs" onclick="return confirm('Are you sure you want to confirm pickup for this item?')">Konfirmasi Ambil</button>
