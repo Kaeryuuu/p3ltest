@@ -1,24 +1,45 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gudang Dashboard - ReUseMart</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-</head>
-<body class="bg-gray-100">
-    <div class="container mx-auto p-4">
-        <div class="flex justify-between items-center mb-4">
-            <h1 class="text-2xl font-bold">Selamat Datang, {{ Auth::guard('pegawai')->user()->nama }}</h1>
-            <form action="{{ route('logout') }}" method="POST">
-                @csrf
-                <button type="submit" class="bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700">Logout</button>
-            </form>
-        </div>
-        <div class="bg-white p-6 rounded-lg shadow-lg">
-            <h2 class="text-xl font-semibold mb-4">Dashboard Gudang</h2>
-            <!-- Add functionalities like managing titipan barang, scheduling deliveries -->
-        </div>
+@extends('layouts.app')
+
+@section('title', 'Gudang Dashboard')
+
+@section('content')
+    <div class="flex h-screen bg-gray-100">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-white shadow-lg">
+            <div class="p-4 border-b">
+                <h2 class="text-xl font-semibold text-blue-600">ReUseMart - Gudang</h2>
+            </div>
+            <nav class="mt-6">
+                <a href="{{ route('gudang.dashboard') }}" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-200 {{ request()->routeIs('cs.dashboard') ? 'bg-gray-200' : '' }}">
+                    <span class="mr-2">🏠</span> Dashboard
+                </a>
+                <a href="{{ route('gudang.barang-titipan.index') }}" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-200 {{ request()->routeIs('cs.penitip.index') ? 'bg-gray-200' : '' }}">
+                    <span class="mr-2">👤</span> Manage BarangTitipan
+                </a>
+                <a href="#" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-200">
+                    <span class="mr-2">⚙️</span> Settings
+                </a>
+                <a href="#" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-200">
+                    <span class="mr-2">❓</span> Help
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 p-6 overflow-auto">
+            <div class="flex justify-between items-center mb-6">
+                <h1 class="text-2xl font-semibold text-gray-800">Gudang Dashboard</h1>
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm text-gray-600">Last updated: {{ now()->format('H:i A, d M Y') }}</span>
+                    <img src="https://via.placeholder.com/40" alt="User" class="rounded-full">
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h2 class="text-lg font-medium text-gray-700 mb-4">Overview</h2>
+                <p class="text-gray-600">Welcome to the Gudang Dashboard. Use the sidebar to manage Barang Tipan or other tasks.</p>
+                <!-- Add more dashboard content as needed -->
+            </div>
+        </main>
     </div>
-</body>
-</html>
+@endsection
