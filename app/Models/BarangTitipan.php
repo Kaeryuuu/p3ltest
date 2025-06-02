@@ -12,19 +12,14 @@ class BarangTitipan extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'kode_barang', 'nama', 'harga', 'berat', 'status', 'kondisi',
+        'kode_barang', 'nama', 'harga', 'berat', 'status_barang',
         'tanggal_kadaluarsa', 'deskripsi', 'id_kategori', 'id_penitip',
-        'perpanjangan', 'garansi', 'id_pembelian','id_subkategori',
+        'perpanjangan', 'garansi', 'id_pembelian',
     ];
 
     public function kategori()
     {
         return $this->belongsTo(KategoriBarang::class, 'id_kategori');
-    }
-
-    public function subkategori()
-    {
-        return $this->belongsTo(SubKategori::class, 'id_subkategori');
     }
 
     public function penitip()
@@ -35,20 +30,5 @@ class BarangTitipan extends Model
     public function transaksiPembelian()
     {
         return $this->hasMany(TransaksiPembelian::class, 'kode_barang', 'kode_barang');
-    }
-
-    public function transaksiPenitipan()
-    {
-        return $this->belongsTo(TransaksiPenitipan::class, 'kode_barang', 'kode_barang');
-    }
-
-    public function fotos() // atau 'photos' jika lebih suka bahasa Inggris
-    {
-        return $this->hasMany(BarangTitipanFoto::class, 'kode_barang', 'kode_barang')->orderBy('urutan', 'asc');
-    }
-
-    public function getFotoUtamaAttribute()
-    {
-        return $this->fotos()->orderBy('urutan', 'asc')->first();
     }
 }
