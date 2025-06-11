@@ -415,102 +415,136 @@ class PenitipController extends Controller
     }
 
     public function barangTitipanConfirmPickup(Request $request, $kode_barang)
-    {
-        Log::info('[CONFIRM PICKUP] START', [
+{
+    Log::info('[CONFIRM PICKUP] START', [
+        'kode_barang' => $kode_barang,
+        'user_id' => Auth::guard('penitip')->check() ? Auth::guard('penitip')->id() : 'Not Authenticated',
+        'session_id' => $request->session()->getId(),
+    ]);
+
+    if (!Auth::guard('penitip')->check()) {
+        Log::warning('[CONFIRM PICKUP] Unauthenticated access.', ['kode_barang' => $kode_barang]);
+        return redirect()->route('login')->withErrors(['error' => 'Silakan login kembali untuk mengkonfirmasi pengambilan.']);
+    }
+
+    try {
+        Log::info('[CONFIRM PICKUP] Mencari BarangTitipan...', [
             'kode_barang' => $kode_barang,
-            'user_id' => Auth::guard('penitip')->check() ? Auth::guard('penitip')->id() : 'Not Authenticated',
-            'session_id' => $request->session()->getId(),
+            'id_penitip' => Auth::guard('penitip')->id(),
+            'target_status' => ['tersedia', 'didonasikan'],
+            'target_kadaluarsa_before' => now()->toDateTimeString()
         ]);
 
-        if (!Auth::guard('penitip')->check()) {
-            Log::warning('[CONFIRM PICKUP] Unauthenticated access.', ['kode_barang' => $kode_barang]);
-            return redirect()->route('login')->withErrors(['error' => 'Silakan login kembali untuk mengkonfirmasi pengambilan.']);
+        // Fetch BarangTitipan with the related TransaksiPenitipan
+        $barang = BarangTitipan::with('transaksiPenitipan') // Ensure the relationship is defined
+            ->where('kode_barang', $kode_barang)
+            ->where('id_penitip', Auth::guard('penitip')->id())
+            ->whereIn('status', ['tersedia', 'didonasikan'])
+            ->whereNotNull('tanggal_kadaluarsa')
+            ->whereDate('tanggal_kadaluarsa', '<', now()->toDateString())
+            ->first();
+
+        if (!$barang) {
+            Log::error('[CONFIRM PICKUP] BarangTitipan tidak ditemukan atau tidak memenuhi kondisi (misal belum kadaluarsa atau status tidak sesuai).', [
+                'kode_barang' => $kode_barang,
+                'id_penitip' => Auth::guard('penitip')->id()
+            ]);
+            $debugBarang = BarangTitipan::where('kode_barang', $kode_barang)
+                ->where('id_penitip', Auth::guard('penitip')->id())->first();
+            Log::info('[CONFIRM PICKUP] Data barang aktual (tanpa filter status/kadaluarsa):', [
+                'barang_aktual' => $debugBarang ? $debugBarang->toArray() : 'Tidak ditemukan sama sekali'
+            ]);
+            return redirect()->route('penitip.barang-titipan.manage')->withErrors([
+                'error' => 'Barang tidak ditemukan atau tidak memenuhi syarat untuk konfirmasi pengambilan (misalnya belum kadaluarsa).'
+            ]);
+        }
+        Log::info('[CONFIRM PICKUP] BarangTitipan ditemukan.', [
+            'kode_barang' => $barang->kode_barang,
+            'status_awal_barang' => $barang->status,
+            'tanggal_kadaluarsa_barang' => $barang->tanggal_kadaluarsa
+        ]);
+
+        // Fetch the related TransaksiPenitipan using the relationship or id_penitipan
+        $transaksi = $barang->transaksiPenitipan; // Assumes a relationship is defined
+        if (!$transaksi) {
+            // Fallback: Fetch TransaksiPenitipan using id_penitipan from BarangTitipan
+            $transaksi = TransaksiPenitipan::where('id_penitipan', $barang->id_penitipan)->first();
         }
 
-        try {
-            Log::info('[CONFIRM PICKUP] Mencari BarangTitipan...', [
+        if (!$transaksi) {
+            Log::error('[CONFIRM PICKUP] TransaksiPenitipan tidak ditemukan.', [
                 'kode_barang' => $kode_barang,
-                'id_penitip' => Auth::guard('penitip')->id(),
-                'target_status' => ['tersedia', 'didonasikan'],
-                'target_kadaluarsa_before' => now()->toDateTimeString()
+                'id_penitipan' => $barang->id_penitipan
             ]);
-
-            $barang = BarangTitipan::where('kode_barang', $kode_barang)
-                ->where('id_penitip', Auth::guard('penitip')->id())
-                ->whereIn('status', ['tersedia', 'didonasikan'])
-                ->whereNotNull('tanggal_kadaluarsa') // Pastikan tidak null sebelum membandingkan
-                ->whereDate('tanggal_kadaluarsa', '<', now()->toDateString()) // Bandingkan hanya bagian tanggal
-                ->first();
-
-            if (!$barang) {
-                Log::error('[CONFIRM PICKUP] BarangTitipan tidak ditemukan atau tidak memenuhi kondisi (misal belum kadaluarsa atau status tidak sesuai).', [
-                    'kode_barang' => $kode_barang,
-                    'id_penitip' => Auth::guard('penitip')->id()
-                ]);
-                $debugBarang = BarangTitipan::where('kode_barang', $kode_barang)
-                                ->where('id_penitip', Auth::guard('penitip')->id())->first();
-                Log::info('[CONFIRM PICKUP] Data barang aktual (tanpa filter status/kadaluarsa):', ['barang_aktual' => $debugBarang ? $debugBarang->toArray() : 'Tidak ditemukan sama sekali']);
-                return redirect()->route('penitip.barang-titipan.manage')->withErrors(['error' => 'Barang tidak ditemukan atau tidak memenuhi syarat untuk konfirmasi pengambilan (misalnya belum kadaluarsa).']);
-            }
-            Log::info('[CONFIRM PICKUP] BarangTitipan ditemukan.', ['kode_barang' => $barang->kode_barang, 'status_awal_barang' => $barang->status, 'tanggal_kadaluarsa_barang' => $barang->tanggal_kadaluarsa]);
-
-            Log::info('[CONFIRM PICKUP] Mencari TransaksiPenitipan...', ['kode_barang' => $kode_barang]);
-            $transaksi = TransaksiPenitipan::where('kode_barang', $kode_barang)->first();
-
-            if (!$transaksi) {
-                Log::error('[CONFIRM PICKUP] TransaksiPenitipan tidak ditemukan.', ['kode_barang' => $kode_barang]);
-                return redirect()->route('penitip.barang-titipan.manage')->withErrors(['error' => 'Data transaksi penitipan terkait tidak ditemukan.']);
-            }
-            Log::info('[CONFIRM PICKUP] TransaksiPenitipan ditemukan.', ['id_penitipan' => $transaksi->id_penitipan, 'tanggal_konfirmasi_ambil_awal' => $transaksi->tanggal_konfirmasi_ambil]);
-
-            $transaksi->tanggal_konfirmasi_ambil = now();
-            $transaksiSaved = $transaksi->save();
-            Log::info('[CONFIRM PICKUP] Hasil simpan TransaksiPenitipan.', [
-                'saved' => $transaksiSaved,
-                'transaksi_setelah_simpan' => $transaksi->toArray()
+            return redirect()->route('penitip.barang-titipan.manage')->withErrors([
+                'error' => 'Data transaksi penitipan terkait tidak ditemukan.'
             ]);
-
-            if (!$transaksiSaved) {
-                Log::error('[CONFIRM PICKUP] Gagal menyimpan TransaksiPenitipan.', ['id_penitipan' => $transaksi->id_penitipan]);
-                return redirect()->route('penitip.barang-titipan.manage')->withErrors(['error' => 'Gagal menyimpan pembaruan transaksi penitipan.']);
-            }
-
-            $status_barang_sebelum_update = $barang->status;
-            $barang->status = 'akan diambil';
-            $barangSaved = $barang->save();
-            Log::info('[CONFIRM PICKUP] Hasil simpan BarangTitipan.', [
-                'kode_barang' => $barang->kode_barang,
-                'status_sebelum_update' => $status_barang_sebelum_update,
-                'status_akan_diset' => 'akan diambil',
-                'saved' => $barangSaved,
-                'barang_setelah_simpan' => $barang->toArray()
-            ]);
-
-            if (!$barangSaved) {
-                Log::error('[CONFIRM PICKUP] Gagal menyimpan status BarangTitipan.', ['kode_barang' => $barang->kode_barang]);
-                return redirect()->route('penitip.barang-titipan.manage')->withErrors(['error' => 'Gagal menyimpan pembaruan status barang.']);
-            }
-
-            Log::info('[CONFIRM PICKUP] Sukses: Pickup confirmed. Tanggal konfirmasi ambil di transaksi & status barang diperbarui.', [
-                'kode_barang' => $kode_barang,
-                'barang_status_final' => $barang->status,
-                'transaksi_tanggal_konfirmasi_ambil' => $transaksi->tanggal_konfirmasi_ambil
-            ]);
-
-            return redirect()->route('penitip.barang-titipan.manage')->with('success', ['message' => 'Konfirmasi pengambilan barang berhasil. Status barang diubah menjadi "Akan Diambil".']);
-
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            Log::error('[CONFIRM PICKUP] ModelNotFoundException: ' . $e->getMessage(), ['kode_barang' => $kode_barang]);
-            return redirect()->route('penitip.barang-titipan.manage')->withErrors(['error' => 'Data barang atau transaksi terkait tidak ditemukan (exception).']);
-        } catch (\Exception $e) {
-            Log::error('[CONFIRM PICKUP] Exception: ' . $e->getMessage(), [
-                'kode_barang' => $kode_barang,
-                'session_id' => $request->session()->getId(),
-                 'exception_trace' => $e->getTraceAsString()
-            ]);
-            return redirect()->route('penitip.barang-titipan.manage')->withErrors(['error' => 'Gagal mengkonfirmasi pengambilan: Terjadi kesalahan sistem.']);
         }
+        Log::info('[CONFIRM PICKUP] TransaksiPenitipan ditemukan.', [
+            'id_penitipan' => $transaksi->id_penitipan,
+            'tanggal_konfirmasi_ambil_awal' => $transaksi->tanggal_konfirmasi_ambil
+        ]);
+
+        // Update TransaksiPenitipan
+        $transaksi->tanggal_konfirmasi_ambil = now();
+        $transaksiSaved = $transaksi->save();
+        Log::info('[CONFIRM PICKUP] Hasil simpan TransaksiPenitipan.', [
+            'saved' => $transaksiSaved,
+            'transaksi_setelah_simpan' => $transaksi->toArray()
+        ]);
+
+        if (!$transaksiSaved) {
+            Log::error('[CONFIRM PICKUP] Gagal menyimpan TransaksiPenitipan.', ['id_penitipan' => $transaksi->id_penitipan]);
+            return redirect()->route('penitip.barang-titipan.manage')->withErrors([
+                'error' => 'Gagal menyimpan pembaruan transaksi penitipan.'
+            ]);
+        }
+
+        // Update BarangTitipan status
+        $status_barang_sebelum_update = $barang->status;
+        $barang->status = 'akan diambil';
+        $barangSaved = $barang->save();
+        Log::info('[CONFIRM PICKUP] Hasil simpan BarangTitipan.', [
+            'kode_barang' => $barang->kode_barang,
+            'status_sebelum_update' => $status_barang_sebelum_update,
+            'status_akan_diset' => 'akan diambil',
+            'saved' => $barangSaved,
+            'barang_setelah_simpan' => $barang->toArray()
+        ]);
+
+        if (!$barangSaved) {
+            Log::error('[CONFIRM PICKUP] Gagal menyimpan status BarangTitipan.', ['kode_barang' => $barang->kode_barang]);
+            return redirect()->route('penitip.barang-titipan.manage')->withErrors([
+                'error' => 'Gagal menyimpan pembaruan status barang.'
+            ]);
+        }
+
+        Log::info('[CONFIRM PICKUP] Sukses: Pickup confirmed. Tanggal konfirmasi ambil di transaksi & status barang diperbarui.', [
+            'kode_barang' => $kode_barang,
+            'barang_status_final' => $barang->status,
+            'transaksi_tanggal_konfirmasi_ambil' => $transaksi->tanggal_konfirmasi_ambil
+        ]);
+
+        return redirect()->route('penitip.barang-titipan.manage')->with('success', [
+            'message' => 'Konfirmasi pengambilan barang berhasil. Status barang diubah menjadi "Akan Diambil".'
+        ]);
+
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        Log::error('[CONFIRM PICKUP] ModelNotFoundException: ' . $e->getMessage(), ['kode_barang' => $kode_barang]);
+        return redirect()->route('penitip.barang-titipan.manage')->withErrors([
+            'error' => 'Data barang atau transaksi terkait tidak ditemukan (exception).'
+        ]);
+    } catch (\Exception $e) {
+        Log::error('[CONFIRM PICKUP] Exception: ' . $e->getMessage(), [
+            'kode_barang' => $kode_barang,
+            'session_id' => $request->session()->getId(),
+            'exception_trace' => $e->getTraceAsString()
+        ]);
+        return redirect()->route('penitip.barang-titipan.manage')->withErrors([
+            'error' => 'Gagal mengkonfirmasi pengambilan: Terjadi kesalahan sistem.'
+        ]);
     }
+}
 
     public function barangTitipanManage(Request $request) // Manage Barang Titipan Page
     {
@@ -606,5 +640,21 @@ class PenitipController extends Controller
             ]);
             return redirect()->route('penitip.barang-titipan.manage')->withErrors(['error' => 'Terjadi kesalahan saat menampilkan detail barang.']);
         }
+    }
+
+    public function lowSaldoPenitip(Request $request)
+    {
+        $query = Penitip::where('saldo', '>', 500000)
+        ->where('jumlah_Jual','>=', 2);
+        
+
+
+        if ($request->has('sort')) {
+            $query->orderBy($request->input('sort'), $request->input('direction', 'asc'));
+        } else {
+            $query->orderBy('id_penitip', 'asc');
+        }
+        $penitipList = $query->get();
+        return view('dashboards.cs-penitip-low', compact('penitipList'));
     }
 }

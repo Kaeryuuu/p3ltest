@@ -16,6 +16,9 @@
                 <a href="{{ route('cs.penitip.index') }}" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-200 {{ request()->routeIs('cs.penitip.index') ? 'bg-gray-200' : '' }}">
                     <span class="mr-2">👤</span> Manage Penitip
                 </a>
+                <a href="{{ route('cs.penitip.low-saldo') }}" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-200 {{ request()->routeIs('cs.penitip.index') ? 'bg-gray-200' : '' }}">
+                    <span class="mr-2">👤</span> Show Penitip Live Code
+                </a>
                 <a href="#" class="flex items-center px-4 py-2 text-gray-600 hover:bg-gray-200">
                     <span class="mr-2">⚙️</span> Settings
                 </a>

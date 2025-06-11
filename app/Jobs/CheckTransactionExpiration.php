@@ -23,19 +23,23 @@ class CheckTransactionExpiration implements ShouldQueue
     }
 
     public function handle()
-    {
-        $transaksi = TransaksiPembelian::with('barangTitipan')->find($this->transaksiId);
-        if ($transaksi && $transaksi->status === 'akan diambil' && $transaksi->metode_pengiriman === 'pickup' && $transaksi->tanggal_pembayaran) {
-            $expirationTime = Carbon::parse($transaksi->tanggal_pembayaran, 'Asia/Jakarta')->addHours(48);
-            if (now('Asia/Jakarta')->greaterThanOrEqualTo($expirationTime)) {
-                $transaksi->status = 'hangus';
-                $transaksi->save();
+{
+    $transaksi = TransaksiPembelian::with('barangTitipan')->find($this->transaksiId);
+    if ($transaksi && $transaksi->status === 'akan diambil' && $transaksi->metode_pengiriman === 'pickup' && $transaksi->tanggal_pembayaran) {
+        $expirationTime = Carbon::parse($transaksi->tanggal_pembayaran, 'Asia/Jakarta')->addHours(48);
+        if (now('Asia/Jakarta')->greaterThanOrEqualTo($expirationTime)) {
+            $transaksi->status = 'hangus';
+            $transaksi->save();
 
-                $transaksi->barangTitipan->status = 'didonasikan';
-                $transaksi->barangTitipan->save();
-
-                Log::info("Transaction #{$transaksi->id_pembelian} marked as Hangus, item {$transaksi->barangTitipan->kode_barang} set to barang untuk donasi");
+            // Handle barangTitipan as a collection
+            foreach ($transaksi->barangTitipan as $barang) {
+                $barang->status = 'didonasikan';
+                $barang->save();
+                Log::info("Item {$barang->kode_barang} from Transaction #{$transaksi->id_pembelian} set to status 'didonasikan'");
             }
+
+            Log::info("Transaction #{$transaksi->id_pembelian} marked as Hangus");
         }
     }
+}
 }

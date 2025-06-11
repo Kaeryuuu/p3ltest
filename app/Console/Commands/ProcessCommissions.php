@@ -24,10 +24,9 @@ class ProcessCommissions extends Command
         Log::info('Starting commission and points processing via artisan command at ' . now('Asia/Jakarta')->toDateTimeString());
 
         try {
-            $result = $this->processCommissionsAndPoints(); // Renamed for clarity
+            $result = $this->processCommissionsAndPoints();
 
             $message = 'Processing complete. Check logs for details.';
-            // Simplified result handling for Artisan command
             if (is_array($result) && isset($result['message'])) {
                 $message = $result['message'];
             }
@@ -110,6 +109,7 @@ class ProcessCommissions extends Command
                         $komisi_hunter = 0;
                         $komisi_mart_final = 0;
                         $bonus_penitip_cepat = 0;
+                        
 
                         $persentaseKomisiMart = $barang->perpanjangan ? 0.30 : 0.20;
                         if ($pegawaiHunter) { // If hunter involved, mart's share might be less
@@ -119,11 +119,13 @@ class ProcessCommissions extends Command
                         $komisi_mart_final = $hargaJual * $persentaseKomisiMart;
 
                         if ($barang->terjual_cepat == 1) { 
-                            $bonus_penitip_cepat = $komisi_mart_final * 0.10; 
+                            $bonus_penitip_cepat = $komisi_mart_final * 0.10;
+   // Deduct bonus from mart's share 
                             Log::info("Bonus penitip cepat applied for item {$barang->kode_barang}.");
                         }
 
                         $penghasilan_kotor_penitip = $hargaJual - $komisi_mart_final - $komisi_hunter;
+                        $komisi_mart_final = $komisi_mart_final - $bonus_penitip_cepat;
                         $komisi_penitip_final = $penghasilan_kotor_penitip + $bonus_penitip_cepat;
 
                         Komisi::create([
@@ -140,7 +142,7 @@ class ProcessCommissions extends Command
                         // Update penitip's rating and jumlah_jual (as per PegawaiController logic)
                         $ratingLama = $penitip->rating ?? 0;
                         $jumlahJualLama = $penitip->jumlah_jual ?? 0;
-                        $ratingUntukPenjualanIni = 4; // Default rating
+                        $ratingUntukPenjualanIni = $barang->rating; // Default rating
                         $totalRatingPoinLama = $ratingLama * $jumlahJualLama;
                         $jumlahJualBaru = $jumlahJualLama + 1;
                         $penitip->jumlah_jual = $jumlahJualBaru;

@@ -9,25 +9,24 @@ use App\Models\TransaksiPembelian;
 use App\Models\Komisi;
 use App\Models\Penitip;
 use App\Models\Pembeli;
+use App\Models\KategoriBarang; // <-- DITAMBAHKAN: Diperlukan untuk laporan
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
-use Barryvdh\DomPDF\Facade\Pdf as PDF; // Tambahkan \Pdf
-
-
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class PegawaiController extends Controller
 {
-    // ... (constructor and other methods like index, store, show, update, destroy, barangTitipanIndex, showBarangTitipanDetail, recordPickup remain largely the same as previously corrected) ...
     public function __construct()
     {
+        // Middleware untuk Pegawai Gudang (id_jabatan 4)
         $this->middleware(function ($request, $next) {
             if (!Auth::guard('pegawai')->check() || !Auth::guard('pegawai')->user()->jabatan) {
                 abort(403, 'Akses ditolak. Informasi pegawai tidak lengkap.');
             }
-            if (Auth::guard('pegawai')->user()->jabatan->id_jabatan !== 4) { // Pastikan ID Jabatan Gudang adalah 4
+            if (Auth::guard('pegawai')->user()->jabatan->id_jabatan !== 4) {
                 abort(403, 'Akses ditolak. Hanya Pegawai Gudang yang dapat mengakses halaman ini.');
             }
             return $next($request);
@@ -40,6 +39,23 @@ class PegawaiController extends Controller
             'scheduleDelivery',
             'confirmPickup',
             'schedulePickup',
+        ]);
+
+        // --- DITAMBAHKAN: Middleware untuk Owner (asumsi id_jabatan 1) ---
+        $this->middleware(function ($request, $next) {
+            if (!Auth::guard('pegawai')->check() || !Auth::guard('pegawai')->user()->jabatan) {
+                abort(403, 'Akses ditolak. Informasi pegawai tidak lengkap.');
+            }
+            // Asumsi ID Jabatan untuk Owner adalah 1
+            if (Auth::guard('pegawai')->user()->jabatan->id_jabatan !== 1) {
+                abort(403, 'Akses ditolak. Hanya Owner yang dapat mengakses halaman ini.');
+            }
+            return $next($request);
+        })->only([
+            'laporanPenjualanKategori',
+            'downloadPenjualanKategoriPDF',
+            'laporanBarangExpired',
+            'downloadBarangExpiredPDF'
         ]);
     }
 
@@ -90,10 +106,9 @@ class PegawaiController extends Controller
         return response()->json(null, 204);
     }
 
-
     public function barangTitipanIndex()
     {
-        $barangTitipan = BarangTitipan::whereIn('status', ['tersedia', 'didonasikan', 'akan diambil', 'sudah diambil', 'terjual', 'hangus'])
+        $barangTitipan = BarangTitipan::whereIn('status', ['tersedia', 'didonasikan', 'akan diambil', 'diambil kembali', 'terjual', 'hangus'])
             ->with(['transaksiPenitipan', 'fotos'])
             ->orderBy('kode_barang', 'desc')
             ->get();
@@ -115,7 +130,7 @@ class PegawaiController extends Controller
             ->where('status', 'akan diambil')
             ->firstOrFail();
         
-        $transaksiDataPenitipan = $barang->transaksiPenitipan; // Correctly uses the belongsTo relationship
+        $transaksiDataPenitipan = $barang->transaksiPenitipan;
         
         if (!$transaksiDataPenitipan) {
             return redirect()->route('gudang.barang-titipan.detail', $barang->kode_barang)
@@ -126,7 +141,7 @@ class PegawaiController extends Controller
         $transaksiDataPenitipan->id_pegawai = Auth::guard('pegawai')->user()->id_pegawai;
         $transaksiDataPenitipan->save();
         
-        $barang->status = 'sudah diambil';
+        $barang->status = 'diambil kembali';
         $barang->save();
 
         return redirect()->route('gudang.barang-titipan.detail', $barang->kode_barang)
@@ -134,18 +149,16 @@ class PegawaiController extends Controller
     }
 
     public function transaksiIndex()
-{
-    $transaksi = TransaksiPembelian::whereIn('metode_pengiriman', ['pickup', 'dikirim'])
-        ->with(['barangTitipan.fotos', 'pembeli'])
-        ->orderBy('id_pembelian', 'asc')
-        ->get();
-    return view('gudang.transaksi.index', compact('transaksi'));
-}
+    {
+        $transaksi = TransaksiPembelian::whereIn('metode_pengiriman', ['pickup', 'dikirim'])
+            ->with(['barangTitipan.fotos', 'pembeli'])
+            ->orderBy('id_pembelian', 'asc')
+            ->get();
+        return view('gudang.transaksi.index', compact('transaksi'));
+    }
 
     public function transaksiDetail($id_pembelian)
     {
-        // TransaksiPembelian->barangTitipan() is now hasMany.
-        // The logic below needs to iterate through each barangTitipan in the collection.
         $transaksi = TransaksiPembelian::with([
             'barangTitipan.fotos',
             'barangTitipan.komisi',
@@ -156,127 +169,117 @@ class PegawaiController extends Controller
         ])->findOrFail($id_pembelian);
 
         if ($transaksi->tanggal_pembayaran && $transaksi->barangTitipan->isNotEmpty()) {
-    // Filter item yang komisinya belum diproses
             $itemsToProcessCommissionFor = $transaksi->barangTitipan->filter(function ($barang) {
-                return !$barang->komisi; // $barang->komisi akan null jika belum ada komisi terkait
+                return !$barang->komisi;
             });
 
-        if ($itemsToProcessCommissionFor->isNotEmpty()) {
-            Log::info("[PegawaiController][transaksiDetail] Transaksi ID {$id_pembelian}: Pembayaran ada. Ditemukan {$itemsToProcessCommissionFor->count()} item(s) yang komisinya belum diproses. Memulai proses.");
-            DB::beginTransaction();
-            try {
-                // Iterasi HANYA pada item yang komisinya belum diproses
-                foreach ($itemsToProcessCommissionFor as $barang) {
-                    // Logika perhitungan komisi Anda untuk $barang...
-                    // (Contoh: ambil $penitip, $pembeli, $transaksiOriginalPenitipan, $pegawaiHunter, dll.)
-                    // ...
-                    Log::info("[PegawaiController][transaksiDetail] Memproses komisi untuk barang {$barang->kode_barang} dalam Transaksi ID {$id_pembelian}.");
+            if ($itemsToProcessCommissionFor->isNotEmpty()) {
+                Log::info("[PegawaiController][transaksiDetail] Transaksi ID {$id_pembelian}: Pembayaran ada. Ditemukan {$itemsToProcessCommissionFor->count()} item(s) yang komisinya belum diproses. Memulai proses.");
+                DB::beginTransaction();
+                try {
+                    foreach ($itemsToProcessCommissionFor as $barang) {
+                        Log::info("[PegawaiController][transaksiDetail] Memproses komisi untuk barang {$barang->kode_barang} dalam Transaksi ID {$id_pembelian}.");
 
-                    $penitip = $barang->penitip;
-                    // $pembeli sudah diambil dari $transaksi->pembeli sebelumnya (di luar loop barang)
-                    $transaksiOriginalPenitipan = $barang->transaksiPenitipan;
-                    $pegawaiHunter = null;
-                    $id_hunter = null; // pastikan di-reset untuk setiap barang
+                        $penitip = $barang->penitip;
+                        $transaksiOriginalPenitipan = $barang->transaksiPenitipan;
+                        $pegawaiHunter = null;
+                        $id_hunter = null;
 
-                    if ($transaksiOriginalPenitipan && $transaksiOriginalPenitipan->pegawai) {
-                        $pegawaiHunter = $transaksiOriginalPenitipan->pegawai;
+                        if ($transaksiOriginalPenitipan && $transaksiOriginalPenitipan->pegawai) {
+                            $pegawaiHunter = $transaksiOriginalPenitipan->pegawai;
+                        }
+
+                        if (!$penitip) {
+                            Log::error("Penitip tidak ditemukan untuk Barang {$barang->kode_barang} dalam Transaksi ID {$id_pembelian}. Komisi untuk item ini dilewati.");
+                            throw new \Exception("Penitip tidak ditemukan untuk Barang {$barang->kode_barang}");
+                        }
+                        
+                        $hargaJual = $barang->harga;
+                        $komisi_hunter = 0;
+                        $komisi_mart_final = 0;
+                        $bonus_penitip_cepat = 0;
+
+                        $persentaseKomisiMart = $barang->perpanjangan ? 0.30 : 0.20;
+                        if ($pegawaiHunter && $pegawaiHunter->id_jabatan == 6) {
+                            $komisi_hunter = $hargaJual * 0.05;
+                            $persentaseKomisiMart = $barang->perpanjangan ? 0.25 : 0.15; 
+                            $id_hunter = $pegawaiHunter->id_pegawai;
+                        }
+                        $komisi_mart_final = $hargaJual * $persentaseKomisiMart;
+
+                        if ($barang->terjual_cepat == 1) {
+                            $bonus_penitip_cepat = $komisi_mart_final * 0.10;
+                            
+                            Log::info("[PegawaiController][transaksiDetail] Bonus penitip cepat diterapkan untuk barang {$barang->kode_barang}.");
+                        }
+
+                        $penghasilan_kotor_penitip = $hargaJual - $komisi_mart_final - $komisi_hunter;
+                        $komisi_mart_final -= $bonus_penitip_cepat;
+                        $komisi_penitip_final = $penghasilan_kotor_penitip + $bonus_penitip_cepat;
+
+                        $penitip->saldo = ($penitip->saldo ?? 0) + round($komisi_penitip_final, 2);
+                        $ratingLama = $penitip->rating ?? 0; 
+                        $jumlahJualLama = $penitip->jumlah_jual ?? 0; 
+                        $ratingUntukPenjualanIni = 4; 
+                        $totalRatingPoinLama = $ratingLama * $jumlahJualLama;
+                        $jumlahJualBaru = $jumlahJualLama + 1;
+                        $penitip->jumlah_jual = $jumlahJualBaru;
+                        $totalRatingPoinBaru = $totalRatingPoinLama + $ratingUntukPenjualanIni;
+                        if ($jumlahJualBaru > 0) {
+                            $penitip->rating = round($totalRatingPoinBaru / $jumlahJualBaru, 2); 
+                        } else {
+                            $penitip->rating = 0; 
+                        }
+                        $penitip->save();
+                        Log::info("[PegawaiController][transaksiDetail] Penitip ID {$penitip->id_penitip} (barang {$barang->kode_barang}) saldo/rating diperbarui.");
+
+                        Komisi::create([
+                            'kode_barang' => $barang->kode_barang,
+                            'id_pegawai' => $id_hunter,
+                            'id_penitip' => $penitip->id_penitip,
+                            'komisi_hunter' => round($komisi_hunter, 2),
+                            'komisi_mart' => round($komisi_mart_final, 2),
+                            'komisi_penitip' => round($komisi_penitip_final, 2),
+                            'bonus' => round($bonus_penitip_cepat, 2),
+                        ]);
+                        Log::info("[PegawaiController][transaksiDetail] Komisi untuk barang {$barang->kode_barang} dalam Transaksi ID {$id_pembelian} berhasil dibuat.");
+                        $barang->load('komisi');
                     }
 
-                    if (!$penitip) {
-                        Log::error("Penitip tidak ditemukan untuk Barang {$barang->kode_barang} dalam Transaksi ID {$id_pembelian}. Komisi untuk item ini dilewati.");
-                        // Jika ingin melanjutkan item berikutnya meskipun ada error pada satu item:
-                        // continue; 
-                        // Jika ingin menggagalkan seluruh transaksi jika satu item error:
-                        throw new \Exception("Penitip tidak ditemukan untuk Barang {$barang->kode_barang}");
-                    }
-                    
-                    $hargaJual = $barang->harga; // Pastikan ini harga jual item
-                    $komisi_hunter = 0;
-                    $komisi_mart_final = 0;
-                    $bonus_penitip_cepat = 0;
-
-                    $persentaseKomisiMart = $barang->perpanjangan ? 0.30 : 0.20;
-                    if ($pegawaiHunter && $pegawaiHunter->id_jabatan == 6) { // ID Jabatan Hunter
-                        $komisi_hunter = $hargaJual * 0.05;
-                        $persentaseKomisiMart = $barang->perpanjangan ? 0.25 : 0.15; 
-                        $id_hunter = $pegawaiHunter->id_pegawai;
-                    }
-                    $komisi_mart_final = $hargaJual * $persentaseKomisiMart;
-
-                    if (($barang->terjual_cepat == 1)) {
-                        $bonus_penitip_cepat = $komisi_mart_final * 0.10;
-                        Log::info("[PegawaiController][transaksiDetail] Bonus penitip cepat diterapkan untuk barang {$barang->kode_barang}.");
+                    $pembeli = $transaksi->pembeli;
+                    if ($pembeli) {
+                        $totalAkhir = $transaksi->total_akhir;
+                        $poinDasar = floor($totalAkhir / 10000);
+                        $bonusPoinTambahan = ($totalAkhir > 500000) ? floor($poinDasar * 0.20) : 0;
+                        $totalPoinDiperoleh = $poinDasar + $bonusPoinTambahan;
+                        $pembeli->poin_loyalitas = ($pembeli->poin_loyalitas ?? 0) + $totalPoinDiperoleh;
+                        $pembeli->save();
+                        Log::info("[PegawaiController][transaksiDetail] Pembeli ID {$pembeli->id_pembeli} poin_loyalitas updated to {$pembeli->poin_loyalitas} untuk Transaksi ID {$id_pembelian}");
+                    } elseif (!$pembeli && $transaksi->id_pembeli) {
+                        Log::warning("[PegawaiController][transaksiDetail] Pembeli tidak ditemukan untuk Transaksi ID {$transaksi->id_pembelian}, poin tidak akan diproses.");
                     }
 
-                    $penghasilan_kotor_penitip = $hargaJual - $komisi_mart_final - $komisi_hunter;
-                    $komisi_penitip_final = $penghasilan_kotor_penitip + $bonus_penitip_cepat;
+                    DB::commit();
+                    Log::info("[PegawaiController][transaksiDetail] Transaksi ID {$id_pembelian}: Kalkulasi komisi untuk item yang membutuhkan selesai dan di-commit.");
+                    $transaksi->load('barangTitipan.komisi');
 
-                    // Update saldo, jumlah_jual, dan rating Penitip (logika ini tetap per barang)
-                    $penitip->saldo = ($penitip->saldo ?? 0) + round($komisi_penitip_final, 2);
-                    $ratingLama = $penitip->rating ?? 0; 
-                    $jumlahJualLama = $penitip->jumlah_jual ?? 0; 
-                    $ratingUntukPenjualanIni = 4; 
-                    $totalRatingPoinLama = $ratingLama * $jumlahJualLama;
-                    $jumlahJualBaru = $jumlahJualLama + 1;
-                    $penitip->jumlah_jual = $jumlahJualBaru;
-                    $totalRatingPoinBaru = $totalRatingPoinLama + $ratingUntukPenjualanIni;
-                    if ($jumlahJualBaru > 0) {
-                        $penitip->rating = round($totalRatingPoinBaru / $jumlahJualBaru, 2); 
-                    } else {
-                        $penitip->rating = 0; 
-                    }
-                    $penitip->save();
-                    Log::info("[PegawaiController][transaksiDetail] Penitip ID {$penitip->id_penitip} (barang {$barang->kode_barang}) saldo/rating diperbarui.");
-
-                    Komisi::create([
-                        'kode_barang' => $barang->kode_barang,
-                        'id_pegawai' => $id_hunter,
-                        'id_penitip' => $penitip->id_penitip,
-                        'komisi_hunter' => round($komisi_hunter, 2),
-                        'komisi_mart' => round($komisi_mart_final, 2),
-                        'komisi_penitip' => round($komisi_penitip_final, 2),
-                        'bonus' => round($bonus_penitip_cepat, 2),
+                } catch (\Exception $e) {
+                    DB::rollBack();
+                    Log::error("[PegawaiController][transaksiDetail] Gagal memproses komisi saat akses detail transaksi ID {$id_pembelian}: " . $e->getMessage(), [
+                        'trace' => substr($e->getTraceAsString(), 0, 1000)
                     ]);
-                    Log::info("[PegawaiController][transaksiDetail] Komisi untuk barang {$barang->kode_barang} dalam Transaksi ID {$id_pembelian} berhasil dibuat.");
-                    $barang->load('komisi'); // Muat ulang relasi komisi untuk item ini
                 }
-
-                // Poin loyalitas pembeli (dihitung sekali per transaksi, setelah semua item diproses)
-                $pembeli = $transaksi->pembeli; // Ambil dari transaksi utama
-                if ($pembeli) {
-                    $totalAkhir = $transaksi->total_akhir;
-                    $poinDasar = floor($totalAkhir / 10000);
-                    $bonusPoinTambahan = ($totalAkhir > 500000) ? floor($poinDasar * 0.20) : 0;
-                    $totalPoinDiperoleh = $poinDasar + $bonusPoinTambahan;
-                    $pembeli->poin_loyalitas = ($pembeli->poin_loyalitas ?? 0) + $totalPoinDiperoleh;
-                    $pembeli->save();
-                    Log::info("[PegawaiController][transaksiDetail] Pembeli ID {$pembeli->id_pembeli} poin_loyalitas updated to {$pembeli->poin_loyalitas} untuk Transaksi ID {$id_pembelian}");
-                } elseif (!$pembeli && $transaksi->id_pembeli) {
-                    Log::warning("[PegawaiController][transaksiDetail] Pembeli tidak ditemukan untuk Transaksi ID {$transaksi->id_pembelian}, poin tidak akan diproses.");
+            } elseif ($transaksi->tanggal_pembayaran && $transaksi->barangTitipan->isEmpty()) {
+                Log::info("[PegawaiController][transaksiDetail] Transaksi ID {$id_pembelian}: Pembayaran ada, namun semua item sudah memiliki komisi. Skip proses komisi.");
+            } else {
+                if (!$transaksi->tanggal_pembayaran) {
+                    Log::info("[PegawaiController][transaksiDetail] Transaksi ID {$id_pembelian}: Pembayaran belum ada, skip proses komisi.");
+                } elseif ($transaksi->barangTitipan->isEmpty()) {
+                    Log::warning("[PegawaiController][transaksiDetail] Transaksi ID {$id_pembelian}: Tidak ada BarangTitipan terkait, skip proses komisi.");
                 }
-
-                DB::commit();
-                Log::info("[PegawaiController][transaksiDetail] Transaksi ID {$id_pembelian}: Kalkulasi komisi untuk item yang membutuhkan selesai dan di-commit.");
-                $transaksi->load('barangTitipan.komisi'); // Muat ulang semua relasi komisi untuk view
-
-            } catch (\Exception $e) {
-                DB::rollBack();
-                Log::error("[PegawaiController][transaksiDetail] Gagal memproses komisi saat akses detail transaksi ID {$id_pembelian}: " . $e->getMessage(), [
-                    'trace' => substr($e->getTraceAsString(), 0, 1000)
-                ]);
-            }
-        } elseif ($transaksi->tanggal_pembayaran && $transaksi->barangTitipan->isNotEmpty() && $itemsToProcessCommissionFor->isEmpty()) {
-            Log::info("[PegawaiController][transaksiDetail] Transaksi ID {$id_pembelian}: Pembayaran ada, namun semua item sudah memiliki komisi. Skip proses komisi.");
-        } else {
-            if (!$transaksi->tanggal_pembayaran) {
-                Log::info("[PegawaiController][transaksiDetail] Transaksi ID {$id_pembelian}: Pembayaran belum ada, skip proses komisi.");
-            } elseif ($transaksi->barangTitipan->isEmpty()) {
-                Log::warning("[PegawaiController][transaksiDetail] Transaksi ID {$id_pembelian}: Tidak ada BarangTitipan terkait, skip proses komisi.");
             }
         }
-    }
 
-        // The view gudang.transaksi.detail now needs to be able to display multiple items if $transaksi->barangTitipan is a collection.
         return view('gudang.transaksi.detail', compact('transaksi'));
     }
 
@@ -316,7 +319,6 @@ class PegawaiController extends Controller
         $transaksi->tanggal_pengambilan = now(); 
         $transaksi->save();
 
-        // If TransaksiPembelian hasMany BarangTitipan, you need to update status for all items.
         if ($transaksi->barangTitipan->isNotEmpty()) {
             foreach($transaksi->barangTitipan as $barang) {
                 $barang->status = 'terjual'; 
@@ -336,72 +338,271 @@ class PegawaiController extends Controller
             'tanggal_pengambilan' => 'required|date|after_or_equal:today', 
         ]);
         $transaksi->tanggal_pengambilan = $validated['tanggal_pengambilan']; 
-        $transaksi->status = 'akan f'; 
+        $transaksi->status = 'akan diambil'; 
         $transaksi->save();
         return redirect()->route('gudang.transaksi.detail', $id_pembelian)->with('success', 'Pengambilan oleh pembeli berhasil dijadwalkan.'); 
     }
 
     public function generateInvoicePDF($id_pembelian)
-{
-    // Eager load semua relasi yang dibutuhkan untuk nota
-    $transaksi = TransaksiPembelian::with([
-        'pembeli',
-        'kurir', // Jika ada dan relevan untuk nota
-        'barangTitipan.penitip', // Ambil semua barang dalam transaksi ini dan info penitipnya
-        'barangTitipan.fotos' // Jika perlu menampilkan foto barang di nota
-    ])->findOrFail($id_pembelian);
+    {
+        $transaksi = TransaksiPembelian::with([
+            'pembeli',
+            'kurir',
+            'barangTitipan.penitip',
+            'barangTitipan.fotos'
+        ])->findOrFail($id_pembelian);
 
-    // Tentukan view berdasarkan metode pengiriman, atau Anda bisa memiliki satu view universal
-    // Jika ada perbedaan signifikan antara nota pickup dan nota kirim
-    $viewName = ''; // Contoh nama view universal
-    if ($transaksi->metode_pengiriman === 'dikirim') {
-        $viewName = 'invoice-kurir'; // Merujuk ke resources/views/invoice/invoice-kurir.blade.php
-    } elseif ($transaksi->metode_pengiriman === 'pickup') {
-        $viewName = 'invoice-pickup'; // Merujuk ke resources/views/invoice/invoice-pickup.blade.php
-    } else {
-        // Fallback atau error jika metode pengiriman tidak dikenal/tidak sesuai untuk invoice
-        // Untuk saat ini, kita bisa fallback ke salah satu atau throw error
-        // Atau Anda bisa membuat view default jika diperlukan.
-        // Misalnya, jika hanya ada dua jenis ini, kondisi else mungkin tidak tercapai jika data valid.
-        Log::error("Metode pengiriman tidak valid ('{$transaksi->metode_pengiriman}') untuk generate invoice Transaksi ID: {$id_pembelian}.");
-        // Anda bisa redirect back dengan error atau menggunakan view default jika ada
-        // return redirect()->back()->with('error', 'Tidak dapat membuat invoice untuk metode pengiriman ini.');
-        // Untuk tujuan contoh, jika tidak ada, kita bisa set default atau biarkan kosong agar error
-        // (yang akan ditangkap oleh Laravel sebagai view not found jika $viewName kosong dan tetap dipakai).
-        // Namun lebih baik memiliki handling yang jelas.
-        // Untuk sementara kita bisa asumsikan salah satu dari dua itu.
-        // Jika $viewName tetap kosong, PDF::loadView akan error.
-        // Sebaiknya ada validasi di sini jika metode pengiriman bisa lainnya.
-        // Untuk sekarang, kita lanjutkan dengan asumsi salah satu dari dua itu.
-        if (empty($viewName)) {
-             // Jika $transaksi->metode_pengiriman bukan 'dikirim' atau 'pickup', maka $viewName akan kosong.
-             // Anda perlu memutuskan apa yang harus dilakukan di sini.
-             // Misalnya, menggunakan view default atau menampilkan pesan error.
-             // Untuk contoh, saya akan redirect dengan error jika tidak ada view yang cocok:
-             return redirect()->route('gudang.transaksi.detail', $id_pembelian)
-                            ->with('error', 'Jenis invoice tidak didukung untuk metode pengiriman ini.');
+        $viewName = $transaksi->metode_pengiriman === 'dikirim' ? 'invoice-kurir' : 'invoice-pickup';
+
+        $data = [
+            'transaksi' => $transaksi,
+            'nama_toko' => 'ReUseMart',
+            'alamat_toko' => 'Jl. ReUse No. 1, Yogyakarta',
+            'telepon_toko' => '0812-3456-7890',
+        ];
+
+        $pdf = Pdf::loadView($viewName, $data);
+        $fileName = "nota-penjualan-{$transaksi->id_pembelian}-{$transaksi->no_nota_pembelian}.pdf";
+        return $pdf->download($fileName);
+    }
+    
+    // ==========================================================================================
+    // == METHOD BARU UNTUK LAPORAN OWNER
+    // ==========================================================================================
+
+    /**
+     * Menampilkan halaman Laporan Penjualan per Kategori untuk Owner.
+     */
+    public function laporanPenjualanKategori(Request $request)
+    {
+        $tahun = $request->input('tahun', Carbon::now()->year);
+
+        // Ambil semua kategori dengan relasi yang dibutuhkan
+        // Kita tidak memfilter tahun di sini, akan dilakukan di PHP
+        $kategoriData = \App\Models\Kategoribarang::with([
+            'barangTitipan.transaksiPenitipan', // Untuk status 'hangus' dan 'diambil kembali'
+            'barangTitipan.transaksiPembelian'  // Untuk status 'terjual'
+        ])->get();
+
+        $laporanData = [];
+        $totalTerjual = 0;
+        $totalGagalTerjual = 0;
+
+        foreach ($kategoriData as $kategori) {
+            $terjualCount = 0;
+            $gagalTerjualCount = 0;
+
+            foreach ($kategori->barangTitipan as $barang) {
+                $cocok = false;
+                if ($barang->status == 'terjual' && $barang->transaksiPembelian) {
+                    // Cek tahun dari tanggal pembayaran di transaksi pembelian
+                    if (Carbon::parse($barang->transaksiPembelian->tanggal_pembayaran)->year == $tahun) {
+                        $terjualCount++;
+                        $cocok = true;
+                    }
+                } elseif ($barang->status == 'diambil kembali' && $barang->transaksiPenitipan) {
+                    if (Carbon::parse($barang->transaksiPenitipan->tanggal_diambil)->year == $tahun) {
+                        $gagalTerjualCount++;
+                        $cocok = true;
+                    }
+                } elseif ($barang->status == 'didonasikan' && $barang->transaksiPenitipan) {
+                    if (Carbon::parse($barang->transaksiPenitipan->tanggal_akhir)->year == $tahun) {
+                        $terjualCount++;
+                        $cocok = true;
+                    }
+                }
+                elseif ($barang->status == 'disumbangkan' && $barang->transaksiPenitipan) {
+                    if (Carbon::parse($barang->transaksiPenitipan->tanggal_akhir)->year == $tahun) {
+                        $terjualCount++;
+                        $cocok = true;
+                    }
+                }
+                elseif ($barang->status == 'tersedia' && $barang->transaksiPenitipan) {
+                    if (Carbon::parse($barang->transaksiPenitipan->tanggal_akhir)->year == $tahun) {
+                        $gagalTerjualCount++;
+                        $cocok = true;
+                    }
+                }
+            }
+
+            
+                 $laporanData[] = [
+                    'kategori' => $kategori->nama,
+                    'terjual' => $terjualCount,
+                    'gagal_terjual' => $gagalTerjualCount
+                ];
+                $totalTerjual += $terjualCount;
+                $totalGagalTerjual += $gagalTerjualCount;
+            
         }
+
+        return view('owner.laporan.penjualan-kategori', [
+            'laporanData' => $laporanData,
+            'tahun' => $tahun,
+            'tanggalCetak' => Carbon::now()->translatedFormat('d F Y'),
+            'totalTerjual' => $totalTerjual,
+            'totalGagalTerjual' => $totalGagalTerjual
+        ]);
     }
 
-    // Data yang akan dikirim ke view PDF
-    $data = [
-        'transaksi' => $transaksi,
-        // Tambahkan data lain jika diperlukan, misalnya informasi perusahaan/toko
-        'nama_toko' => 'ReUseMart',
-        'alamat_toko' => 'Jl. ReUse No. 1, Yogyakarta',
-        'telepon_toko' => '0812-3456-7890',
-    ];
+    /**
+     * Mengunduh PDF Laporan Penjualan per Kategori.
+     * DIUBAH: Logika disamakan dengan method di atas.
+     */
+    public function downloadPenjualanKategoriPDF(Request $request)
+    {
+        $tahun = $request->input('tahun', Carbon::now()->year);
 
-    // Load view dan data ke PDF
-    $pdf = PDF::loadView($viewName, $data);
+        $kategoriData = \App\Models\Kategoribarang::with([
+            'barangTitipan.transaksiPenitipan',
+            'barangTitipan.transaksiPembelian'
+        ])->get();
 
-    // Atur nama file PDF yang akan di-download
-    $fileName = "nota-penjualan-{$transaksi->id_pembelian}-{$transaksi->no_nota_pembelian}.pdf";
+        $laporanData = [];
+        $totalTerjual = 0;
+        $totalGagalTerjual = 0;
 
-    // Opsi 1: Tampilkan PDF di browser
-    // return $pdf->stream($fileName);
+        foreach ($kategoriData as $kategori) {
+            $terjualCount = 0;
+            $gagalTerjualCount = 0;
 
-    // Opsi 2: Langsung download PDF
-    return $pdf->download($fileName);
-}
+            foreach ($kategori->barangTitipan as $barang) {
+                $cocok = false;
+                if ($barang->status == 'terjual' && $barang->transaksiPembelian) {
+                    // Cek tahun dari tanggal pembayaran di transaksi pembelian
+                    if (Carbon::parse($barang->transaksiPembelian->tanggal_pembayaran)->year == $tahun) {
+                        $terjualCount++;
+                        $cocok = true;
+                    }
+                } elseif ($barang->status == 'diambil kembali' && $barang->transaksiPenitipan) {
+                    if (Carbon::parse($barang->transaksiPenitipan->tanggal_diambil)->year == $tahun) {
+                        $gagalTerjualCount++;
+                        $cocok = true;
+                    }
+                } elseif ($barang->status == 'didonasikan' && $barang->transaksiPenitipan) {
+                    if (Carbon::parse($barang->transaksiPenitipan->tanggal_akhir)->year == $tahun) {
+                        $terjualCount++;
+                        $cocok = true;
+                    }
+                }
+                elseif ($barang->status == 'disumbangkan' && $barang->transaksiPenitipan) {
+                    if (Carbon::parse($barang->transaksiPenitipan->tanggal_akhir)->year == $tahun) {
+                        $terjualCount++;
+                        $cocok = true;
+                    }
+                }
+                elseif ($barang->status == 'tersedia' && $barang->transaksiPenitipan) {
+                    if (Carbon::parse($barang->transaksiPenitipan->tanggal_akhir)->year == $tahun) {
+                        $gagalTerjualCount++;
+                        $cocok = true;
+                    }
+                }
+            }
+
+            
+                 $laporanData[] = [
+                    'kategori' => $kategori->nama,
+                    'terjual' => $terjualCount,
+                    'gagal_terjual' => $gagalTerjualCount
+                ];
+                $totalTerjual += $terjualCount;
+                $totalGagalTerjual += $gagalTerjualCount;
+            
+        }
+        
+        $data = [
+            'laporanData' => $laporanData,
+            'tahun' => $tahun,
+            'tanggalCetak' => Carbon::now()->translatedFormat('d F Y'),
+            'totalTerjual' => $totalTerjual,
+            'totalGagalTerjual' => $totalGagalTerjual
+        ];
+
+        $pdf = Pdf::loadView('owner.laporan.pdf.penjualan-kategori-pdf', $data);
+        return $pdf->download('laporan-penjualan-kategori-'.$tahun.'.pdf');
+    }
+
+    /**
+     * Menampilkan halaman Laporan Barang yang Masa Penitipannya Habis.
+     */
+    public function laporanBarangExpired()
+    {
+        // Ambil semua barang yang statusnya masih aktif dan berpotensi untuk expired.
+        $semuaBarang = BarangTitipan::whereNotIn('status', ['terjual', 'diambil kembali', 'didonasikan'])
+            ->with('penitip', 'transaksiPenitipan')
+            ->get();
+
+        $laporanData = [];
+        $now = Carbon::now();
+
+        foreach ($semuaBarang as $barang) {
+            // Pastikan ada data transaksi penitipan untuk diproses
+            if ($barang->transaksiPenitipan && $barang->transaksiPenitipan->tanggal_penitipan) {
+                $tanggalMasuk = Carbon::parse($barang->transaksiPenitipan->tanggal_penitipan);
+                $tanggalAkhir = $tanggalMasuk->copy()->addDays(30);
+
+                // Cek apakah barang sudah melewati tanggal akhir (expired)
+                if ($tanggalAkhir->isPast()) {
+                    $batasAmbil = $tanggalAkhir->copy()->addDays(7);
+
+                    $laporanData[] = [
+                        'barang' => $barang,
+                        'tanggal_masuk' => $tanggalMasuk,
+                        'tanggal_akhir' => $tanggalAkhir,
+                        'batas_ambil' => $batasAmbil,
+                    ];
+                }
+            }
+        }
+
+        return view('owner.laporan.barang-expired', [
+            'laporanData' => $laporanData,
+            'tanggalCetak' => $now->translatedFormat('d F Y')
+        ]);
+    }
+
+    /**
+     * Mengunduh PDF Laporan Barang yang Masa Penitipannya Habis.
+     * DIUBAH: Logika disamakan dengan method di atas.
+     */
+    public function downloadBarangExpiredPDF()
+    {
+        $semuaBarang = BarangTitipan::whereNotIn('status', ['terjual', 'diambil kembali', 'didonasikan'])
+            ->with('penitip', 'transaksiPenitipan')
+            ->get();
+
+        $laporanData = [];
+        $now = Carbon::now();
+
+        foreach ($semuaBarang as $barang) {
+            if ($barang->transaksiPenitipan && $barang->transaksiPenitipan->tanggal_penitipan) {
+                $tanggalMasuk = Carbon::parse($barang->transaksiPenitipan->tanggal_penitipan);
+                $tanggalAkhir = $tanggalMasuk->copy()->addDays(30);
+
+                if ($tanggalAkhir->isPast()) {
+                    $batasAmbil = $tanggalAkhir->copy()->addDays(7);
+                    $laporanData[] = [
+                        'barang' => $barang,
+                        'tanggal_masuk' => $tanggalMasuk,
+                        'tanggal_akhir' => $tanggalAkhir,
+                        'batas_ambil' => $batasAmbil,
+                    ];
+                }
+            }
+        }
+        
+        $data = [
+            'laporanData' => $laporanData,
+            'tanggalCetak' => $now->translatedFormat('d F Y')
+        ];
+
+        $pdf = Pdf::loadView('owner.laporan.pdf.barang-expired-pdf', $data);
+        return $pdf->download('laporan-barang-expired-'.$now->format('Y-m-d').'.pdf');
+    }
+
+    public function ownerDashboard()
+    {
+       
+        return view('owner.dashboard');
+    }
 }

@@ -67,14 +67,14 @@
                     <table class="w-full text-left">
                         <thead>
                             <tr class="bg-gray-50 border-b">
-                                <th class="p-3 text-sm font-medium text-gray-600">Name</th>
-                                <th class="p-3 text-sm font-medium text-gray-600">Price</th>
-                                <th class="p-3 text-sm font-medium text-gray-600">Weight</th>
+                                <th class="p-3 text-sm font-medium text-gray-600">Nama Barang</th>
+                                <th class="p-3 text-sm font-medium text-gray-600">Harga</th>
+                                <th class="p-3 text-sm font-medium text-gray-600">Berat</th>
                                 <th class="p-3 text-sm font-medium text-gray-600">Status</th>
-                                <th class="p-3 text-sm font-medium text-gray-600">Condition</th>
-                                <th class="p-3 text-sm font-medium text-gray-600">Expiry Date</th>
-                                <th class="p-3 text-sm font-medium text-gray-600">Photos</th>
-                                <th class="p-3 text-sm font-medium text-gray-600 whitespace-nowrap">Actions</th>
+                                <th class="p-3 text-sm font-medium text-gray-600">Kondisi</th>
+                                <th class="p-3 text-sm font-medium text-gray-600">Tanggal Kadaluarsa</th>
+                                <th class="p-3 text-sm font-medium text-gray-600">Foto</th>
+                                <th class="p-3 text-sm font-medium text-gray-600 whitespace-nowrap">Aksi</th>
                             </tr>
                         </thead>
                         <tbody>

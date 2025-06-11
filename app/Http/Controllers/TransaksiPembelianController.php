@@ -87,9 +87,11 @@ class TransaksiPembelianController extends Controller
 
                         if ($barang->terjual_cepat) {
                             $bonus_penitip_cepat = $komisi_mart_final * 0.10;
+                            $komisi_mart_final += $bonus_penitip_cepat;
                         }
 
                         $penghasilan_kotor_penitip = $hargaJual - $komisi_mart_final - $komisi_hunter;
+
                         $komisi_penitip_final = $penghasilan_kotor_penitip + $bonus_penitip_cepat;
 
                         $penitip->saldo = ($penitip->saldo ?? 0) + round($komisi_penitip_final, 2);
@@ -139,7 +141,7 @@ class TransaksiPembelianController extends Controller
                 function ($attribute, $value, $fail) {
                     $date = Carbon::parse($value, 'Asia/Jakarta')->startOfDay();
                     $today = Carbon::now('Asia/Jakarta')->startOfDay();
-                    if ($date->isSameDay($today) && Carbon::now('Asia/Jakarta')->hour >= 16) {
+                    if ($date->isSameDay($today) && Carbon::now('Asia/Jakarta')->hour >= 14) {
                         $fail('Pengiriman setelah jam 4 sore tidak dapat dijadwalkan untuk hari ini.');
                     }
                 },

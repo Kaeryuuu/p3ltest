@@ -121,7 +121,7 @@
 
             <section>
                 <h2 class="text-2xl font-semibold text-gray-700 mb-6 pb-3 border-b border-gray-200">Detail Barang</h2>
-                @if ($transaksi->barangTitipan)
+                @if ($transaksi->barangTitipan && $transaksi->barangTitipan->isNotEmpty())
                     <div class="overflow-x-auto rounded-lg border border-gray-200">
                         <table class="w-full">
                             <thead class="bg-slate-50">
@@ -133,12 +133,14 @@
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                <tr>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ $transaksi->barangTitipan->kode_barang }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ $transaksi->barangTitipan->nama }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">Rp {{ number_format($transaksi->barangTitipan->harga, 0, ',', '.') }}</td>
-                                    <td class="px-6 py-4 text-sm text-gray-700 break-words min-w-[200px]">{{ $transaksi->barangTitipan->deskripsi ?? 'Tidak ada deskripsi' }}</td>
-                                </tr>
+                                @foreach ($transaksi->barangTitipan as $barang)
+                                    <tr class="hover:bg-gray-50 transition-colors duration-150">
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ $barang->kode_barang }}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ $barang->nama }}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">Rp {{ number_format($barang->harga, 0, ',', '.') }}</td>
+                                        <td class="px-6 py-4 text-sm text-gray-700 break-words min-w-[200px]">{{ $barang->deskripsi ?? 'Tidak ada deskripsi' }}</td>
+                                    </tr>
+                                @endforeach
                             </tbody>
                         </table>
                     </div>
@@ -158,4 +160,4 @@
         </footer>
     </div>
 </body>
-</html>
+</html>de

@@ -18,8 +18,8 @@ class CheckExpiredTransactions extends Command
         Log::info('Running CheckExpiredTransactions at ' . now('Asia/Jakarta')->toDateTimeString());
 
         $expiredTransactions = TransaksiPembelian::where('status', 'akan diambil')
-            ->whereNotNull('tanggal_pembayaran')
-            ->where('tanggal_pembayaran', '<=', now('Asia/Jakarta')->subDays(2))
+            ->whereNotNull('tanggal_pengambilan')
+            ->where('tanggal_pengambilan', '<=', now('Asia/Jakarta')->subDays(2))
             ->with('barangTitipan.penitip', 'pembeli') // Eager load for notifications
             ->get();
 

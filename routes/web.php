@@ -6,9 +6,9 @@ use App\Http\Controllers\PembeliController;
 use App\Http\Controllers\OrganisasiController;
 use App\Http\Controllers\PenitipController;
 use App\Http\Controllers\PegawaiController;
-use App\Http\Middleware\CheckExpiredTransaction; // Pastikan ini adalah kelas Middleware yang valid
+use App\Http\Controllers\KategoriBarangController;
+use App\Http\Middleware\CheckExpiredTransaction;
 use App\Http\Controllers\RequestDonasiController;
-// Jika TransaksiPembelianController benar-benar digunakan untuk route di bawah, pastikan ada
 use App\Http\Controllers\TransaksiPembelianController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -31,13 +31,13 @@ Route::get('/dashboard', function () {
 
 // --- PENITIP ROUTES ---
 Route::middleware(['auth:penitip'])->group(function () {
-    Route::get('/profile', [PenitipController::class, 'barangTitipanIndex'])->name('profile'); // Mungkin lebih baik ke dashboard penitip?
+    Route::get('/profile', [PenitipController::class, 'barangTitipanIndex'])->name('profile');
     Route::get('/penitip/dashboard', [PenitipController::class, 'barangTitipanIndex'])->name('penitip.dashboard');
 
     Route::prefix('penitip/barang-titipan')->name('penitip.barang-titipan.')->group(function () {
         Route::get('/manage', [PenitipController::class, 'barangTitipanManage'])->name('manage');
         Route::post('/{kode_barang}/extend', [PenitipController::class, 'barangTitipanExtend'])->name('extend');
-        Route::post('/{kode_barang}/confirm-pickup', [PenitipController::class, 'barangTitipanConfirmPickup'])->name('confirm-pickup');
+        Route::post('/{id_penitipan}/confirm-pickup', [PenitipController::class, 'barangTitipanConfirmPickup'])->name('confirm-pickup');
         Route::get('/{kode_barang}/detail', [PenitipController::class, 'barangTitipanShow'])->name('show');
     });
 });
@@ -66,13 +66,23 @@ Route::middleware(['auth:organisasi'])->group(function () {
 
 // --- PEGAWAI ROUTES ---
 Route::middleware(['auth:pegawai'])->group(function () {
-    // Dashboards by role (Consider using a single dashboard with role-based content)
-    Route::get('/owner/dashboard', function () { return view('dashboards.owner'); })->name('owner.dashboard');
+    // Dashboards by role
+    // --- DIUBAH: Dashboard Owner kini menunjuk ke controller ---
+    Route::get('/owner/dashboard', [PegawaiController::class, 'ownerDashboard'])->name('owner.dashboard');
+    
     Route::get('/admin/dashboard', function () { return view('dashboards.admin'); })->name('admin.dashboard');
     Route::get('/cs/dashboard', function () { return view('dashboards.cs'); })->name('cs.dashboard');
     Route::get('/gudang/dashboard', function () { return view('dashboards.gudang'); })->name('gudang.dashboard');
-    Route::get('/kurir/dashboard', function () { return view('dashboards.kurir'); })->name('kurir.dashboard'); // Nama route disesuaikan
+    Route::get('/kurir/dashboard', function () { return view('dashboards.kurir'); })->name('kurir.dashboard');
     Route::get('/hunter/dashboard', function () { return view('dashboards.hunter'); })->name('hunter.dashboard');
+
+    // --- DITAMBAHKAN: Rute Laporan untuk Owner ---
+    Route::prefix('owner/laporan')->name('owner.laporan.')->group(function () {
+        Route::get('/penjualan-kategori', [PegawaiController::class, 'laporanPenjualanKategori'])->name('penjualan-kategori');
+        Route::get('/penjualan-kategori/pdf', [PegawaiController::class, 'downloadPenjualanKategoriPDF'])->name('penjualan-kategori.pdf');
+        Route::get('/barang-expired', [PegawaiController::class, 'laporanBarangExpired'])->name('barang-expired');
+        Route::get('/barang-expired/pdf', [PegawaiController::class, 'downloadBarangExpiredPDF'])->name('barang-expired.pdf');
+    });
 
     // CS - Penitip Management
     Route::prefix('cs/penitip')->name('cs.penitip.')->group(function () {
@@ -83,6 +93,7 @@ Route::middleware(['auth:pegawai'])->group(function () {
         Route::put('/{id_penitip}', [PenitipController::class, 'update'])->name('update');
         Route::patch('/{id_penitip}/deactivate', [PenitipController::class, 'deactivate'])->name('deactivate');
         Route::patch('/{id_penitip}/activate', [PenitipController::class, 'activate'])->name('activate');
+        Route::get('/low-saldo', [PenitipController::class, 'lowSaldoPenitip'])->name('low-saldo');
     });
 
     // Gudang - Barang Titipan Management
@@ -98,23 +109,25 @@ Route::middleware(['auth:pegawai'])->group(function () {
         Route::get('/{id_pembelian}', [PegawaiController::class, 'transaksiDetail'])
             ->name('detail')
             ->middleware(CheckExpiredTransaction::class);
-            ;
         Route::post('/{id_pembelian}/schedule-delivery', [PegawaiController::class, 'scheduleDelivery'])->name('schedule-delivery');
         Route::post('/{id_pembelian}/confirm-pickup', [PegawaiController::class, 'confirmPickup'])->name('confirm-pickup');
         Route::post('/{id_pembelian}/schedule-pickup', [PegawaiController::class, 'schedulePickup'])->name('schedule-pickup');
         Route::get('/{id_pembelian}/print-invoice', [PegawaiController::class, 'generateInvoicePDF'])->name('print-invoice');
     });
 
-    // Route::prefix('gudang/penitipan')->name('gudang.penitipan.')->group(function () {
-       
-    //     Route::get('/{id_penitipan}/print-nota', [PegawaiController::class, 'generateNotaPenitipanPDF'])->name('print-nota');
-    // });
-
+    // --- DIPERBAIKI: Nama rute untuk owner transaksi kini benar ---
+    Route::prefix('owner/transaksi')->name('owner.transaksi.')->group(function () {
+        Route::get('/', [PegawaiController::class, 'transaksiIndex'])->name('index');
+        Route::get('/{id_pembelian}', [PegawaiController::class, 'transaksiDetail'])
+            ->name('detail')
+            ->middleware(CheckExpiredTransaction::class);
+        Route::post('/{id_pembelian}/schedule-delivery', [PegawaiController::class, 'scheduleDelivery'])->name('schedule-delivery');
+        Route::post('/{id_pembelian}/confirm-pickup', [PegawaiController::class, 'confirmPickup'])->name('confirm-pickup');
+        Route::post('/{id_pembelian}/schedule-pickup', [PegawaiController::class, 'schedulePickup'])->name('schedule-pickup');
+        Route::get('/{id_pembelian}/print-invoice', [PegawaiController::class, 'generateInvoicePDF'])->name('print-invoice');
+    });
 
     // Rute untuk memproses komisi melalui web (TINJAU KEMBALI KEPERLUANNYA)
-    // Pastikan TransaksiPembelianController dan methodnya ada jika route ini dipertahankan.
-    // Jika TransaksiPembelianController.php adalah duplikat PegawaiController.php, ini tidak akan berfungsi.
     Route::get('/transaksi-pembelian/process-commissions', [TransaksiPembelianController::class, 'processCommissionsAndPoints'])
         ->name('transaksi-pembelian.process-commissions');
-    // Komentari dulu jika tidak yakin atau jika Artisan command lebih diutamakan.
 });

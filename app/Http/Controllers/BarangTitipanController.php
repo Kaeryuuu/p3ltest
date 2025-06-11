@@ -69,10 +69,26 @@ class BarangTitipanController extends Controller
     }
 
     public function show($id)
-    {
-        $barang = BarangTitipan::with('fotos')->findOrFail($id);
-        return response()->json($barang);
+{
+    $barang = BarangTitipan::with('fotos')->findOrFail($id);
+
+    // Check for expired transactions related to this BarangTitipan
+    $transaksi = TransaksiPembelian::where('id_pembelian', $barang->id_pembelian)
+        ->where('status', 'akan diambil')
+        ->where('metode_pengiriman', 'pickup')
+        ->whereNotNull('tanggal_pembayaran')
+        ->first();
+
+        
+
+    if ($transaksi) {
+        // Dispatch the job to check if the transaction is expired
+        \App\Jobs\CheckTransactionExpiration::dispatch($transaksi->id_pembelian);
+        Log::info("Dispatched CheckTransactionExpiration job for Transaction #{$transaksi->id_pembelian} when accessing BarangTitipan #{$id}");
     }
+
+    return view('gudang.barang-titipan.detail', compact('barang'));
+}
 
     public function update(Request $request, $id)
     {

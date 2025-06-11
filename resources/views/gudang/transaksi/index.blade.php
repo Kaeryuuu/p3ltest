@@ -85,7 +85,7 @@
                                                 @elseif($item->status == 'siap diambil') bg-cyan-100 text-cyan-800
                                                 @elseif($item->status == 'sedang dikirim') bg-indigo-100 text-indigo-800
                                                 @elseif($item->status == 'sudah diambil') bg-purple-100 text-purple-800
-                                                @elseif($item->status == 'selesai') bg-green-100 text-green-800
+                                                @elseif($item->status == 'transaksi selesai') bg-green-100 text-green-800
                                                 @elseif($item->status == 'hangus') bg-red-100 text-red-800
                                                 @elseif($item->status == 'dibatalkan') bg-pink-100 text-pink-800
                                                 @else bg-gray-100 text-gray-800 @endif">
